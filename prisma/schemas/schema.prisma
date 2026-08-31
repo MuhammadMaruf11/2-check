@@ -1,0 +1,345 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum Role {
+  USER
+  AUTHOR
+  ADMIN
+}
+
+// DRAFT -> PENDING_REVIEW -> APPROVED -> SCHEDULED -> PUBLISHED
+// REJECTED can happen from PENDING_REVIEW
+enum BlogStatus {
+  DRAFT
+  PENDING_REVIEW
+  APPROVED
+  SCHEDULED
+  PUBLISHED
+  REJECTED
+}
+
+enum ReviewStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+enum AvailabilityStatus {
+  IN_STOCK
+  OUT_OF_STOCK
+  LIMITED_STOCK
+  PREORDER
+  DISCONTINUED
+}
+
+// Unchanged - Auth models
+model Account {
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String?
+  access_token      String?
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String?
+  session_state     String?
+  user              User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([provider, providerAccountId])
+}
+
+model Session {
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+// Updated - role now supports USER / AUTHOR / ADMIN
+model User {
+  id        String    @id @default(cuid())
+  email     String    @unique
+  password  String?
+  name      String?
+  role      Role      @default(USER)
+  image     String?
+  isActive  Boolean   @default(true)
+  reviews   Review[]
+  blogs     Blog[]
+  comments  Comment[]
+  accounts  Account[]
+  sessions  Session[]
+  createdAt DateTime  @default(now())
+
+  @@index([role])
+}
+
+// Updated - schema-only workflow expansion, scheduling fields added
+model Blog {
+  id          String     @id @default(cuid())
+  slug        String     @unique
+  title       String
+  subTitle    String?
+  tags        String[]
+  content     Json
+  status      BlogStatus @default(PENDING_REVIEW)
+  coverImage  String?
+  isFeatured  Boolean    @default(false)
+  authorId    String
+  author      User       @relation(fields: [authorId], references: [id])
+  comments    Comment[]
+  products    Product[]  @relation("BlogToProduct")
+  scheduledAt DateTime?
+  publishedAt DateTime?
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
+
+  @@index([title])
+  @@index([status, createdAt(sort: Desc)])
+  @@index([status, scheduledAt])
+  @@index([authorId])
+  @@index([isFeatured])
+}
+
+// Expanded - moderation support (isHidden) for admin/author comment management
+model Comment {
+  id         String   @id @default(cuid())
+  content    String
+  isHidden   Boolean  @default(false)
+  blogId     String
+  blog       Blog     @relation(fields: [blogId], references: [id], onDelete: Cascade)
+  userId     String?
+  user       User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+  guestName  String?
+  guestEmail String?
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@index([blogId])
+  @@index([userId])
+}
+
+// Unchanged
+model News {
+  id        String   @id @default(cuid())
+  title     String
+  slug      String   @unique
+  content   String   @db.Text
+  imageUrl  String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+// New - database-driven product categories (replaces the old free-text `category` string)
+model Category {
+  id           String    @id @default(cuid())
+  name         String
+  slug         String    @unique
+  description  String?
+  icon         String?
+  displayOrder Int       @default(0)
+  products     Product[]
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  @@index([displayOrder])
+}
+
+// Rebuilt - full product model for reviews, comparisons, and affiliate monetization
+model Product {
+  id    String  @id @default(cuid())
+  slug  String  @unique
+  name  String
+  brand String?
+
+  categoryId String?
+  category   Category? @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+
+  shortDescription String
+  longDescription  String  @db.Text
+  verdict          String? @db.Text // "Our Verdict" editorial summary
+
+  thumbnailUrl String?
+  imageUrls    String[]
+
+  pros String[]
+  cons String[]
+
+  specifications ProductSpecification[]
+
+  // Cached aggregate rating so listing pages don't need to aggregate Review on every request
+  rating      Float @default(0)
+  ratingCount Int   @default(0)
+
+  price         Decimal? @db.Decimal(10, 2)
+  originalPrice Decimal? @db.Decimal(10, 2)
+  currency      String   @default("USD")
+
+  releaseDate DateTime?
+
+  isFeatured  Boolean   @default(false)
+  isPublished Boolean   @default(false)
+  publishedAt DateTime?
+
+  seoTitle       String?
+  seoDescription String?
+  seoKeywords    String[]
+
+  affiliateLinks  AffiliateLink[]
+  videoReviews    VideoReview[]
+  customerReviews Review[]
+  expertReviews   ExpertReview[]
+
+  blogs Blog[] @relation("BlogToProduct")
+
+  // Symmetric self-relation: admin picks related products, shown on both sides
+  relatedTo   Product[] @relation("RelatedProducts")
+  relatedFrom Product[] @relation("RelatedProducts")
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([name])
+  @@index([brand])
+  @@index([categoryId])
+  @@index([isPublished, publishedAt])
+  @@index([isFeatured])
+}
+
+// New - normalized spec sheet (key/value rows) instead of one free-form JSON blob,
+// so the admin UI can render/edit a structured, ordered spec table.
+model ProductSpecification {
+  id           String  @id @default(cuid())
+  productId    String
+  product      Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+  groupName    String? // e.g. "Display", "Camera", "Battery"
+  label        String // e.g. "Screen Size"
+  value        String // e.g. "6.7 inch"
+  displayOrder Int     @default(0)
+
+  @@index([productId])
+}
+
+// Expanded - flexible multi-store affiliate/buying-options model
+model AffiliateLink {
+  id        String  @id @default(cuid())
+  productId String
+  product   Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  storeName String
+  storeLogo String?
+
+  productUrl   String?
+  affiliateUrl String
+
+  price        Decimal?            @db.Decimal(10, 2)
+  currency     String              @default("USD")
+  availability AvailabilityStatus  @default(IN_STOCK)
+
+  isActive     Boolean @default(true)
+  displayOrder Int     @default(0)
+
+  trackingId String? // optional campaign/affiliate tracking tag
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([productId])
+  @@index([productId, isActive])
+}
+
+// New - YouTube video reviews (TechToCheck's own + third-party reviewers)
+model VideoReview {
+  id        String  @id @default(cuid())
+  productId String
+  product   Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  title        String
+  youtubeUrl   String
+  youtubeId    String?
+  thumbnailUrl String?
+
+  reviewerName       String? // e.g. "TechToCheck", "Marques Brownlee"
+  reviewerChannelUrl String?
+
+  isFeatured   Boolean   @default(false)
+  displayOrder Int       @default(0)
+  publishedAt  DateTime?
+
+  createdAt DateTime @default(now())
+
+  @@index([productId])
+}
+
+// New - recognized expert/known-reviewer quotes, separated from ordinary customer reviews
+model ExpertReview {
+  id        String  @id @default(cuid())
+  productId String
+  product   Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  reviewerName   String
+  reviewerRole   String? // title / publication, e.g. "Editor, The Verge"
+  reviewerAvatar String?
+
+  quote     String  @db.Text
+  sourceUrl String?
+  rating    Float?
+
+  isFeatured   Boolean @default(false)
+  displayOrder Int     @default(0)
+
+  createdAt DateTime @default(now())
+
+  @@index([productId])
+}
+
+// Expanded - customer/user reviews, now with a moderation workflow
+model Review {
+  id      String  @id @default(cuid())
+  rating  Int
+  title   String?
+  comment String
+
+  status     ReviewStatus @default(PENDING)
+  isFeatured Boolean      @default(false)
+  isVerified Boolean      @default(false)
+
+  productId String
+  product   Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+  userId    String
+  user      User    @relation(fields: [userId], references: [id])
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // One review per user per product - prevents obvious duplicate/spam submissions
+  @@unique([productId, userId])
+  @@index([productId])
+  @@index([productId, status])
+  @@index([userId])
+}
+
+// Unchanged
+model Newsletter {
+  id        String   @id @default(cuid())
+  email     String   @unique
+  createdAt DateTime @default(now())
+}
+
+// Unchanged
+model ContactMessage {
+  id        String   @id @default(cuid())
+  name      String
+  email     String
+  subject   String?
+  message   String   @db.Text
+  isRead    Boolean  @default(false)
+  createdAt DateTime @default(now())
+}

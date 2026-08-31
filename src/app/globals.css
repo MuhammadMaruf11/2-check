@@ -1,0 +1,92 @@
+@import "tailwindcss";
+
+/*
+  TechToCheck design tokens.
+  Ink navy for authority + a single teal accent (the "verdict" color) +
+  a warm amber reserved only for ratings/stars, which readers already
+  read as a scoring signal rather than a brand color.
+*/
+:root {
+  --background: #faf9f6;
+  --surface: #ffffff;
+  --foreground: #10151f;
+  --foreground-muted: #565f70;
+  --border: #e6e3db;
+
+  --ink: #10151f;
+  --ink-soft: #1b2333;
+  --paper: #faf9f6;
+
+  --accent: #10877a;
+  --accent-soft: #e4f2ef;
+  --accent-strong: #0b6156;
+
+  --rating: #c9932a;
+  --rating-soft: #faf1dd;
+
+  --danger: #c1443a;
+
+  /* Legacy tokens kept for existing admin/auth screens */
+  --primary: #25386f;
+  --secondary: #0b6156;
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-surface: var(--surface);
+  --color-foreground: var(--foreground);
+  --color-foreground-muted: var(--foreground-muted);
+  --color-border: var(--border);
+
+  --color-ink: var(--ink);
+  --color-ink-soft: var(--ink-soft);
+  --color-paper: var(--paper);
+
+  --color-accent: var(--accent);
+  --color-accent-soft: var(--accent-soft);
+  --color-accent-strong: var(--accent-strong);
+
+  --color-rating: var(--rating);
+  --color-rating-soft: var(--rating-soft);
+
+  --color-danger: var(--danger);
+
+  --color-primary: var(--primary);
+  --color-secondary: var(--secondary);
+
+  --font-sans: var(--font-inter);
+  --font-display: var(--font-space-grotesk);
+  --font-mono: var(--font-jetbrains-mono);
+}
+
+body {
+  color: var(--foreground);
+  background: var(--background);
+  font-family: var(--font-sans), Arial, Helvetica, sans-serif;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+.reveal {
+  opacity: 0;
+  transform: translateY(16px);
+  transition: opacity 0.6s ease, transform 0.6s ease;
+}
+.reveal.reveal-in {
+  opacity: 1;
+  transform: translateY(0);
+}
+@media (prefers-reduced-motion: reduce) {
+  .reveal {
+    opacity: 1;
+    transform: none;
+    transition: none;
+  }
+}

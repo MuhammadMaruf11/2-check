@@ -1,0 +1,16 @@
+
+
+.ProseMirror ul {
+  list-style: disc !important;
+  padding-left: 24px !important;
+}
+
+.ProseMirror ol {
+  list-style: decimal !important;
+  padding-left: 24px !important;
+}
+
+.ProseMirror li {
+  display: list-item;
+  margin-bottom: 5px;
+}
